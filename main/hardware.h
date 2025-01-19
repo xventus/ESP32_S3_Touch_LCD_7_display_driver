@@ -63,6 +63,16 @@ Pin Connection
 
 
 
+// DS CARD
+
+#define HW_SD_MOSI GPIO_NUM_11
+#define HW_SD_MISO GPIO_NUM_13
+#define HW_SD_CLK  GPIO_NUM_12
+#define HW_SD_CS_EXP   4   
+
+
+// DISPLAY
+
 #define HW_I2C_NUM           i2c_port_t::I2C_NUM_0 
 #define HW_I2C_TIMEOUT_MS    1000
 
@@ -94,9 +104,18 @@ Pin Connection
 #define HW_LCD_DATA_15          40 
 
 
-#define HW_LCD_H_RES                   800
+#define HW_LCD_H_RES                   800 
 #define HW_LCD_V_RES                   480
 
+
+/*
+PCLK=(HSYNC_time_row)×(VSYNC_number_of_rows)×(refresh) 
+HSYNC_time_row = 800  + back_porch + front_porch + hsync_pulse_width = aprox. 1056 pixels
+VSYNC_number_of_rows = 480 + back_porch + front_porch + vsync_pulse_width = aprox. 525 rows
+
+60Hz:  PCLK=1056×525×60=33,264,000Hz
+30Hz: aprox. 
+ */
 #define HW_LCD_PIXEL_CLOCK          (18 * 1000 * 1000)
 
 #define GPIO_INPUT_IO_4             GPIO_NUM_4

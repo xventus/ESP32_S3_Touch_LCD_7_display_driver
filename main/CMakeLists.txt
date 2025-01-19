@@ -6,6 +6,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(COMPONENT_SRCS
     "main.cpp"              # Main application entry point
     "display_driver.cpp"
+    "screen_manager.cpp"
+    "setting_screen.cpp"
+    "main_screen.cpp"
 )
 
 # Define the include directories

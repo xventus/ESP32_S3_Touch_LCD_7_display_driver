@@ -1,7 +1,12 @@
 
+// vim: ts=4 et
+// Copyright (c) 2025 Petr Vanek, petr@fotoventus.cz
+//
+/// @file   display_driver.cpp
+/// @author Petr Vanek
+///
 
 #include "display_driver.h"
-
 
 DisplayDriver::DisplayDriver()
 {
@@ -9,6 +14,47 @@ DisplayDriver::DisplayDriver()
 
 DisplayDriver::~DisplayDriver()
 {
+    // Stop the LVGL working task
+    if (_lvglTaskHandle != nullptr)
+    {
+        vTaskDelete(_lvglTaskHandle);
+        _lvglTaskHandle = nullptr;
+    }
+    // Stop LVGL working task
+    if (_lvglLock != nullptr)
+    {
+        vSemaphoreDelete(_lvglLock);
+        _lvglLock = nullptr;
+    }
+   
+    // Free display buffer memory
+    if (_displayBuff.buf1 != nullptr)
+    {
+        heap_caps_free(_displayBuff.buf1);
+        _displayBuff.buf1 = nullptr;
+    }
+    if (_displayBuff.buf2 != nullptr)
+    {
+        heap_caps_free(_displayBuff.buf2);
+        _displayBuff.buf2 = nullptr;
+    }
+    // Delete touch and panel handles
+    if (_touchHandle != nullptr)
+    {
+        esp_lcd_touch_del(_touchHandle);
+        _touchHandle = nullptr;
+    }
+    if (_touchIOHandle != nullptr)
+    {
+        esp_lcd_panel_io_del(_touchIOHandle);
+        _touchIOHandle = nullptr;
+    }
+    if (_panelHandle != nullptr)
+    {
+        esp_lcd_panel_del(_panelHandle);
+        _panelHandle = nullptr;
+    }
+
 }
 
 void DisplayDriver::initBus()
@@ -19,8 +65,6 @@ void DisplayDriver::initBus()
     resetTouch();
     initTouch();
 }
-
-
 
 void DisplayDriver::initI2C()
 {
@@ -57,8 +101,8 @@ void DisplayDriver::initTouch()
     esp_lcd_touch_config_t tp_cfg = {
         .x_max = HW_LCD_V_RES,
         .y_max = HW_LCD_H_RES,
-        .rst_gpio_num = static_cast<gpio_num_t>(-1),
-        .int_gpio_num = static_cast<gpio_num_t>(-1),
+        .rst_gpio_num = GPIO_NUM_NC, 
+        .int_gpio_num = GPIO_NUM_NC,
         .flags = {
             .swap_xy = 0,
             .mirror_x = 0,
@@ -67,22 +111,18 @@ void DisplayDriver::initTouch()
     };
 
     ESP_ERROR_CHECK(esp_lcd_touch_new_i2c_gt911(_touchIOHandle, &tp_cfg, &_touchHandle));
+}
+
+void DisplayDriver::start(const uint32_t usStackDepth, UBaseType_t uxPriority, BaseType_t coreId)
+{
     lv_init();
     void *buf1 = nullptr;
     void *buf2 = nullptr;
-    buf1 = heap_caps_malloc(HW_LCD_H_RES * 100 * sizeof(lv_color_t), MALLOC_CAP_SPIRAM);
-    lv_disp_draw_buf_init(&_displayBuff, buf1, buf2, HW_LCD_H_RES * 100);
-    lv_disp_drv_init(&_displayDriver);
-    _displayDriver.hor_res = HW_LCD_H_RES;
-    _displayDriver.ver_res = HW_LCD_V_RES;
-    _displayDriver.flush_cb = lvglFlush;
-    _displayDriver.draw_buf = &_displayBuff;
-    _displayDriver.user_data = _panelHandle;
-}
+    buf1 = heap_caps_malloc(HW_LCD_H_RES * HW_LCD_V_RES * sizeof(lv_color_t), MALLOC_CAP_SPIRAM);
+    buf2 = heap_caps_malloc(HW_LCD_H_RES * HW_LCD_V_RES * sizeof(lv_color_t), MALLOC_CAP_SPIRAM);
+    lv_disp_draw_buf_init(&_displayBuff, buf1, buf2, HW_LCD_H_RES * 40);
 
-void DisplayDriver::start(const uint32_t usStackDepth, UBaseType_t uxPriority)
-{
-   lv_disp_t *disp = lv_disp_drv_register(&_displayDriver);
+    lv_disp_t *disp = lv_disp_drv_register(&_displayDriver);
     const esp_timer_create_args_t lvgl_tick_timer_args = {
         .callback = &lvglTick,
         .name = "LGVLTCK"};
@@ -99,8 +139,14 @@ void DisplayDriver::start(const uint32_t usStackDepth, UBaseType_t uxPriority)
     ESP_ERROR_CHECK(esp_timer_start_periodic(lvgl_tick_timer, 2000));
 
     _lvglLock = xSemaphoreCreateRecursiveMutex();
-    assert(_lvglLock);
-    xTaskCreate(lvglWorkingTask, "LVGLTSK", usStackDepth, this, uxPriority, nullptr);
+    auto result = xTaskCreatePinnedToCore(lvglWorkingTask, "LVGLTSK", usStackDepth, this, uxPriority,  &_lvglTaskHandle, coreId);
+
+    if (result != pdPASS)
+    {
+        ESP_LOGE(TAG, "Failed to create LVGL task.");
+        _lvglTaskHandle = nullptr;  
+    }
+    
 }
 
 void DisplayDriver::resetTouch()
@@ -135,29 +181,17 @@ void DisplayDriver::unlock()
 
 void DisplayDriver::lvglWorkingTask(void *arg)
 {
-#define LVGL_TASK_MAX_DELAY_MS 500
-#define LVGL_TASK_MIN_DELAY_MS 1
 
     DisplayDriver *dd = static_cast<DisplayDriver *>(arg);
 
-    uint32_t task_delay_ms = LVGL_TASK_MAX_DELAY_MS;
     while (true)
     {
-
         if (dd->lock(-1))
         {
-            task_delay_ms = lv_timer_handler();
+            lv_timer_handler();
             dd->unlock();
         }
-        if (task_delay_ms > LVGL_TASK_MAX_DELAY_MS)
-        {
-            task_delay_ms = LVGL_TASK_MAX_DELAY_MS;
-        }
-        else if (task_delay_ms < LVGL_TASK_MIN_DELAY_MS)
-        {
-            task_delay_ms = LVGL_TASK_MIN_DELAY_MS;
-        }
-        vTaskDelay(pdMS_TO_TICKS(task_delay_ms));
+        vTaskDelay(pdMS_TO_TICKS(20));
     }
 }
 
@@ -169,7 +203,7 @@ bool DisplayDriver::lvglVsynEvent(esp_lcd_panel_handle_t panel, const esp_lcd_rg
 
 void DisplayDriver::lvglTick(void *arg)
 {
-    lv_tick_inc(3);
+    lv_tick_inc(1);
 }
 
 void DisplayDriver::lvglFlush(lv_disp_drv_t *drv, const lv_area_t *area, lv_color_t *color_map)
@@ -183,6 +217,7 @@ void DisplayDriver::lvglFlush(lv_disp_drv_t *drv, const lv_area_t *area, lv_colo
     esp_lcd_panel_draw_bitmap(panel_handle, offsetx1, offsety1, offsetx2 + 1, offsety2 + 1, color_map);
     lv_disp_flush_ready(drv);
 }
+
 
 void DisplayDriver::lvglTouch(lv_indev_drv_t *drv, lv_indev_data_t *data)
 {
@@ -215,6 +250,7 @@ void DisplayDriver::initLCD()
             .pclk_hz = HW_LCD_PIXEL_CLOCK,
             .h_res = HW_LCD_H_RES,
             .v_res = HW_LCD_V_RES,
+
             .hsync_pulse_width = 4,
             .hsync_back_porch = 8,
             .hsync_front_porch = 8,
@@ -228,7 +264,7 @@ void DisplayDriver::initLCD()
         },
         .data_width = 16, // RGB565
         .bits_per_pixel = 0,
-        .num_fbs = 1, // only one frame buffer
+        .num_fbs = 2, // only one frame buffer
         .dma_burst_size = 64,
         .hsync_gpio_num = HW_LCD_HSYNC,
         .vsync_gpio_num = HW_LCD_VSYNC,
@@ -254,7 +290,13 @@ void DisplayDriver::initLCD()
             HW_LCD_DATA_15,
         },
         .flags = {
+
+            .disp_active_low = false,
+            .refresh_on_demand = false,
             .fb_in_psram = true,
+            .double_fb = true,
+            .no_fb = false,
+            .bb_invalidate_cache = false,
         },
     };
 
@@ -264,5 +306,13 @@ void DisplayDriver::initLCD()
     };
     ESP_ERROR_CHECK(esp_lcd_rgb_panel_register_event_callbacks(_panelHandle, &cbs, &_displayDriver));
     ESP_ERROR_CHECK(esp_lcd_panel_reset(_panelHandle));
+    esp_rom_delay_us(200 * 1000); // 100 ms
     ESP_ERROR_CHECK(esp_lcd_panel_init(_panelHandle));
+    esp_rom_delay_us(100 * 1000);
+    lv_disp_drv_init(&_displayDriver);
+    _displayDriver.hor_res = HW_LCD_H_RES;
+    _displayDriver.ver_res = HW_LCD_V_RES;
+    _displayDriver.flush_cb = lvglFlush;
+    _displayDriver.draw_buf = &_displayBuff;
+    _displayDriver.user_data = _panelHandle;
 }
