@@ -87,6 +87,21 @@ bool SettingScreen::init()
     return rc;
 }
 
+ void SettingScreen::down()
+{
+    if (_screen && lv_obj_is_valid(_screen))
+    {
+        lv_obj_del(_screen);
+        _screen = nullptr; 
+    }
+
+    _label = nullptr;
+
+    ESP_LOGI(TAG, "SettingScreen resources released.");
+}
+
+
+
 void SettingScreen::show()
 {
     if (_screen)
@@ -100,7 +115,7 @@ void SettingScreen::updateText(std::string_view data)
 
     if (_label && !data.empty())
     {
-        DDLockGuard lock();
+        DDLockGuard lock;
         lv_label_set_text(_label, data.data());
     }
     else

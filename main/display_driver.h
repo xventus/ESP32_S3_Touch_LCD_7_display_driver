@@ -42,8 +42,10 @@ public:
 
     /**
      * @brief Initializes the display bus and IO configurations.
+     * @param needInitI2C - true - initialize I2C
+     * @param i2c_port_t  - i2c port
      */
-    void initBus();
+    void initBus(bool needInitI2C, i2c_port_t i2cPort);
 
     /**
      * @brief Starts the LVGL driver and attaches the display task.
@@ -73,6 +75,11 @@ public:
      * @brief Unlocks the LVGL UI to allow access by other tasks.
      */
     void unlock();
+
+     /**
+     *    @brief Backlight.
+     */
+    void backLight(bool on);
 
 private:
     /**
@@ -123,8 +130,9 @@ private:
 
     /**
      * @brief Initializes the I2C interface for the touch controller.
+     * @param needInitI2C - true - initialize I2C
      */
-    void initI2C();
+    void initI2C(bool needInitI2C);
 
     /**
      * @brief Initializes GPIO pins used by the display and touch controller.
@@ -155,4 +163,5 @@ private:
     SemaphoreHandle_t _lvglLock{nullptr}; ///< Semaphore to synchronize access to LVGL.
     lv_indev_drv_t _devDr; ///< LVGL input device driver instance.
     TaskHandle_t _lvglTaskHandle {nullptr}; ///< Handle for the LVGL working task.
+    i2c_port_t _i2cPort;
 };

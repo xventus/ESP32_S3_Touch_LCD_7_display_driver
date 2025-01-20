@@ -53,7 +53,7 @@ Pin Connection
 | GPIO47           | G6      |        |          |         |        |        |
 | GPIO48           | G5      |        |          |         |        |        |
 | CH422G           |         |        |          |         |        |        |
-| EXIO1            | TP_RST  |        |          |         |        |        |
+| EXIO1            | TP_RST  |        |          |         |        |        |  
 | EXIO2            | DISP    |        |          |         |        |        |
 | EXIO3            | LCD_RST |        |          |         |        |        |
 | EXIO4            |         |        | SD_CS    |         |        |        |
@@ -61,17 +61,34 @@ Pin Connection
 ==============================================================================
 */
 
+/*
+Description CH422
+
+EXIO1      TP_RST      LCD    -> LOW -> HIGH
+EXIO2      DISP        LCD    -> HIGH
+EXIO3      LCD_RST     LCD    -> HIGH
+EXIO4      SD_CS       SD     -> 
+EXIO5      USB_SEL     USB    -> LOW
+
+*/
 
 
-// DS CARD
+#define HW_EX_TP_RST    1
+#define HW_EX_DISP      2
+#define HW_EX_LCD_RST   3
+#define HW_EX_SD_CS     4
+
+// SD CARD
 
 #define HW_SD_MOSI GPIO_NUM_11
 #define HW_SD_MISO GPIO_NUM_13
 #define HW_SD_CLK  GPIO_NUM_12
-#define HW_SD_CS_EXP   4   
-
+#define HW_SD_CS  GPIO_NUM_NC
 
 // DISPLAY
+
+#define HW_SDA  GPIO_NUM_8 
+#define HW_SCL  GPIO_NUM_9
 
 #define HW_I2C_NUM           i2c_port_t::I2C_NUM_0 
 #define HW_I2C_TIMEOUT_MS    1000
@@ -118,8 +135,8 @@ VSYNC_number_of_rows = 480 + back_porch + front_porch + vsync_pulse_width = apro
  */
 #define HW_LCD_PIXEL_CLOCK          (18 * 1000 * 1000)
 
-#define GPIO_INPUT_IO_4             GPIO_NUM_4
-#define GPIO_INPUT_PIN_SEL          1ULL<<GPIO_INPUT_IO_4
+#define HW_LCD_CTP_IRQ             GPIO_NUM_4
+#define HW_LCD_CTP_IRQ_SEL          1ULL<<HW_LCD_CTP_IRQ
 
 
 #define LCD_PIN_NUM_DISP_EN         -1

@@ -34,9 +34,9 @@ ScreenManager *ScreenManager::operator->() const
     return ScreenManager::getInstance();
 }
 
-void ScreenManager::initLCD()
+void ScreenManager::initLCD(bool needInitI2C, i2c_port_t i2cPort)
 {
-    _dd.initBus();
+    _dd.initBus(needInitI2C, i2cPort);
     _dd.start();
 }
 
@@ -86,7 +86,7 @@ bool ScreenManager::showScreen(std::size_t index)
     }
 
     {
-        DDLockGuard lock();
+        DDLockGuard lock;
         _screens[index]->show();
     }
 
@@ -104,6 +104,79 @@ bool ScreenManager::showScreenByType(ScreenType tag)
     }
     return showScreen(it->second);
 }
+
+void ScreenManager::removeScreenByType(ScreenType tag)
+{
+    auto it = _screenIndexByName.find(tag);
+    if (it == _screenIndexByName.end())
+    {
+        ESP_LOGE(TAG, "No screen found for type");
+        return;
+    }
+
+    size_t index = it->second;
+
+    if (_currentScreen == _screens[index].get())
+    {
+        for (size_t i = 0; i < _screens.size(); ++i)
+        {
+            if (_screens[i] && i != index)
+            {
+                showScreen(i);
+                break;
+            }
+        }
+    }
+
+    if (_screens[index])
+    {
+        _screens[index]->down();
+        _screens[index].reset();
+    }
+
+    _screenIndexByName.erase(it);
+    ESP_LOGI(TAG, "Screen removed by type: %d", static_cast<int>(tag));
+}
+
+void ScreenManager::removeScreenByIndex(size_t index)
+{
+    if (index >= _screens.size() || !_screens[index])
+    {
+        ESP_LOGE(TAG, "Invalid screen index: %zu", index);
+        return;
+    }
+
+    if (_currentScreen == _screens[index].get())
+    {
+        for (size_t i = 0; i < _screens.size(); ++i)
+        {
+            if (_screens[i] && i != index)
+            {
+                showScreen(i);
+                break;
+            }
+        }
+    }
+
+   
+    if (_screens[index])
+    {
+        _screens[index]->down();
+        _screens[index].reset();
+    }
+    
+    for (auto it = _screenIndexByName.begin(); it != _screenIndexByName.end(); ++it)
+    {
+        if (it->second == index)
+        {
+            _screenIndexByName.erase(it);
+            break;
+        }
+    }
+
+    ESP_LOGI(TAG, "Screen removed by index: %zu", index);
+}
+
 
 void ScreenManager::updateText(std::string_view data)
 {

@@ -57,9 +57,9 @@ public:
     ScreenManager *operator->() const;
 
     /**
-     * @brief Initializes the LCD driver.
+     * @brief Initializes the LCD driver. A call is needed before the display is used for the first time !!!
      */
-    void initLCD();
+    void initLCD(bool needInitI2C, i2c_port_t i2cPort);
 
     /**
      * @brief Adds a new screen to the manager.
@@ -91,6 +91,9 @@ public:
      * @return True if successful, false otherwise.
      */
     bool showScreenByType(ScreenType tag);
+
+    void removeScreenByType(ScreenType tag);
+    void removeScreenByIndex(size_t index);
 
     /**
      * @brief Updates text on the currently active screen.

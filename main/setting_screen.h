@@ -28,6 +28,8 @@ public:
 
     bool init() override;
 
+    void down() override;
+
     void show() override;
 
     void updateText(std::string_view data);

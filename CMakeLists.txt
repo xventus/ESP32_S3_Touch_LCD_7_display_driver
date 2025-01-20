@@ -14,3 +14,5 @@ message(STATUS "Using partition table file: ${PARTITION_TABLE_FILE}")
 spiffs_create_partition_image(spiffs ${CMAKE_SOURCE_DIR}/data FLASH_IN_PROJECT)
 
 
+
+

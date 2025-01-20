@@ -7,6 +7,7 @@
 ///
 
 #include "display_driver.h"
+#include "sngl_ch422.h"
 
 DisplayDriver::DisplayDriver()
 {
@@ -26,7 +27,7 @@ DisplayDriver::~DisplayDriver()
         vSemaphoreDelete(_lvglLock);
         _lvglLock = nullptr;
     }
-   
+
     // Free display buffer memory
     if (_displayBuff.buf1 != nullptr)
     {
@@ -54,42 +55,50 @@ DisplayDriver::~DisplayDriver()
         esp_lcd_panel_del(_panelHandle);
         _panelHandle = nullptr;
     }
-
 }
 
-void DisplayDriver::initBus()
+void DisplayDriver::initBus(bool needInitI2C, i2c_port_t i2cPort)
 {
+    _i2cPort = i2cPort;
     initLCD();
-    initI2C();
+    initI2C(needInitI2C);
     initGPIO();
     resetTouch();
     initTouch();
 }
 
-void DisplayDriver::initI2C()
+void DisplayDriver::initI2C(bool needInitI2C)
 {
+    if (needInitI2C)
+    {
+        i2c_config_t conf = {
+            .mode = I2C_MODE_MASTER,
+            .sda_io_num = HW_SDA,
+            .scl_io_num = HW_SCL,
+            .sda_pullup_en = GPIO_PULLUP_ENABLE,
+            .scl_pullup_en = GPIO_PULLUP_ENABLE,
+            .master = {
+                .clk_speed = 400000,
+            },
+            .clk_flags = 0,
+        };
 
-    i2c_config_t conf = {
-        .mode = I2C_MODE_MASTER,
-        .sda_io_num = GPIO_NUM_8,
-        .scl_io_num = GPIO_NUM_9,
-        .sda_pullup_en = GPIO_PULLUP_ENABLE,
-        .scl_pullup_en = GPIO_PULLUP_ENABLE,
-        .master = {
-            .clk_speed = 400000,
-        },
-        .clk_flags = 0,
-    };
-
-    ESP_ERROR_CHECK(i2c_param_config(HW_I2C_NUM, &conf));
-    ESP_ERROR_CHECK(i2c_driver_install(HW_I2C_NUM, conf.mode, 0, 0, 0));
+        ESP_ERROR_CHECK(i2c_param_config(_i2cPort, &conf));
+        ESP_ERROR_CHECK(i2c_driver_install(_i2cPort, conf.mode, 0, 0, 0));
+        esp_rom_delay_us(100 * 1000);
+        ESP_LOGI(TAG, "initI2C done");
+    }
+    else
+    {
+        ESP_LOGI(TAG, "initI2C not initialized from Display Driver");
+    }
 }
 
 void DisplayDriver::initGPIO()
 {
     gpio_config_t io_conf = {};
     io_conf.intr_type = GPIO_INTR_DISABLE;
-    io_conf.pin_bit_mask = GPIO_INPUT_PIN_SEL;
+    io_conf.pin_bit_mask = HW_LCD_CTP_IRQ_SEL;
     io_conf.mode = GPIO_MODE_OUTPUT;
     gpio_config(&io_conf);
 }
@@ -97,11 +106,11 @@ void DisplayDriver::initGPIO()
 void DisplayDriver::initTouch()
 {
     esp_lcd_panel_io_i2c_config_t tp_io_config = ESP_LCD_TOUCH_IO_I2C_GT911_CONFIG();
-    ESP_ERROR_CHECK(esp_lcd_new_panel_io_i2c((esp_lcd_i2c_bus_handle_t)HW_I2C_NUM, &tp_io_config, &_touchIOHandle));
+    ESP_ERROR_CHECK(esp_lcd_new_panel_io_i2c((esp_lcd_i2c_bus_handle_t)_i2cPort, &tp_io_config, &_touchIOHandle));
     esp_lcd_touch_config_t tp_cfg = {
         .x_max = HW_LCD_V_RES,
         .y_max = HW_LCD_H_RES,
-        .rst_gpio_num = GPIO_NUM_NC, 
+        .rst_gpio_num = GPIO_NUM_NC,
         .int_gpio_num = GPIO_NUM_NC,
         .flags = {
             .swap_xy = 0,
@@ -139,32 +148,39 @@ void DisplayDriver::start(const uint32_t usStackDepth, UBaseType_t uxPriority, B
     ESP_ERROR_CHECK(esp_timer_start_periodic(lvgl_tick_timer, 2000));
 
     _lvglLock = xSemaphoreCreateRecursiveMutex();
-    auto result = xTaskCreatePinnedToCore(lvglWorkingTask, "LVGLTSK", usStackDepth, this, uxPriority,  &_lvglTaskHandle, coreId);
+    auto result = xTaskCreatePinnedToCore(lvglWorkingTask, "LVGLTSK", usStackDepth, this, uxPriority, &_lvglTaskHandle, coreId);
 
     if (result != pdPASS)
     {
         ESP_LOGE(TAG, "Failed to create LVGL task.");
-        _lvglTaskHandle = nullptr;  
+        _lvglTaskHandle = nullptr;
     }
-    
+}
+
+void DisplayDriver::backLight(bool on)
+{
+    auto inst = DisplayEXT7::getInstance();
+    if (on)
+        inst->setOutput(HW_EX_DISP, true);
+    else
+        inst->setOutput(HW_EX_DISP, false);
 }
 
 void DisplayDriver::resetTouch()
 {
-    constexpr uint8_t resetCommands[][2] = {
-        {0x24, 0x01}, // Write 0x01 to address 0x24
-        {0x38, 0x2C}, // Write 0x2C to address 0x38
-        {0x38, 0x2E}  // Write 0x2E to address 0x38
-    };
 
-    for (const auto &cmd : resetCommands)
+    auto inst = DisplayEXT7::getInstance();
+    if (inst->init(0x2C, 0x01) != ESP_OK)
     {
-        i2c_master_write_to_device(HW_I2C_NUM, cmd[0], &cmd[1], 1, HW_I2C_TIMEOUT_MS / portTICK_PERIOD_MS);
-        esp_rom_delay_us((cmd[1] == 0x2C) ? 100 * 1000 : ((cmd[1] == 0x2E) ? 200 * 1000 : 0));
+        ESP_LOGE(TAG, "Failed to initialize CH422G");
     }
 
+    esp_rom_delay_us(100 * 1000);
+    inst->setOutput(0x2E);
+
+    esp_rom_delay_us(200 * 1000);
     // Reset
-    gpio_set_level(GPIO_INPUT_IO_4, 0);
+    gpio_set_level(HW_LCD_CTP_IRQ, 0);
     esp_rom_delay_us(100 * 1000);
 }
 
@@ -218,7 +234,6 @@ void DisplayDriver::lvglFlush(lv_disp_drv_t *drv, const lv_area_t *area, lv_colo
     lv_disp_flush_ready(drv);
 }
 
-
 void DisplayDriver::lvglTouch(lv_indev_drv_t *drv, lv_indev_data_t *data)
 {
     uint16_t touchpadX[1] = {0};
@@ -226,19 +241,32 @@ void DisplayDriver::lvglTouch(lv_indev_drv_t *drv, lv_indev_data_t *data)
     uint8_t touchpadCounter = 0;
 
     esp_lcd_touch_handle_t touchHandle = static_cast<esp_lcd_touch_handle_t>(drv->user_data);
+
+    SemaphoreHandle_t i2cMutex = DisplayEXT7::getInstance()->getMutex();
+
     esp_lcd_touch_read_data(touchHandle);
-
-    bool touched = esp_lcd_touch_get_coordinates(touchHandle, touchpadX, touchpadY, NULL, &touchpadCounter, 1);
-
-    if (touched && touchpadCounter > 0)
+    if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(10)) == pdTRUE)
     {
-        data->point.x = touchpadX[0];
-        data->point.y = touchpadY[0];
-        data->state = LV_INDEV_STATE_PR;
+
+        bool touched = esp_lcd_touch_get_coordinates(touchHandle, touchpadX, touchpadY, NULL, &touchpadCounter, 1);
+
+        if (touched && touchpadCounter > 0)
+        {
+            data->point.x = touchpadX[0];
+            data->point.y = touchpadY[0];
+            data->state = LV_INDEV_STATE_PR;
+        }
+        else
+        {
+            data->state = LV_INDEV_STATE_REL;
+        }
+
+        xSemaphoreGive(i2cMutex);
     }
     else
     {
-        data->state = LV_INDEV_STATE_REL;
+        ESP_LOGW(TAG, "Failed to acquire mutex for touch reading");
+        data->state = LV_INDEV_STATE_REL; 
     }
 }
 

@@ -9,6 +9,8 @@ set(COMPONENT_SRCS
     "screen_manager.cpp"
     "setting_screen.cpp"
     "main_screen.cpp"
+    "CH422G.cpp"
+    "sngl_ch422.cpp"
 )
 
 # Define the include directories
@@ -29,3 +31,4 @@ target_compile_options(${COMPONENT_LIB} PRIVATE
 target_compile_options(${COMPONENT_LIB} PRIVATE
     $<$<COMPILE_LANGUAGE:C>:-std=c99>         # Use C99 for C source files
 )
+

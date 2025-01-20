@@ -50,6 +50,12 @@ public:
     virtual bool init() = 0;
 
     /**
+     * @brief Freeup the screen.
+     * 
+     */
+    virtual void down() = 0;
+
+    /**
      * @brief Displays the screen.
      * 
      * This method should load the screen's content onto the display.
