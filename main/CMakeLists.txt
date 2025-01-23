@@ -5,8 +5,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Define the component sources
 set(COMPONENT_SRCS
     "main.cpp"              # Main application entry point
-    "display_driver.cpp"
-    "screen_manager.cpp"
+    "ui/display_driver.cpp"
+    "ui/screen_manager.cpp"
     "setting_screen.cpp"
     "main_screen.cpp"
     "CH422G.cpp"

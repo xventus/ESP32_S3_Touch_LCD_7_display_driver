@@ -86,7 +86,6 @@ bool ScreenManager::showScreen(std::size_t index)
     }
 
     {
-        DDLockGuard lock;
         _screens[index]->show();
     }
 
@@ -96,13 +95,22 @@ bool ScreenManager::showScreen(std::size_t index)
 
 bool ScreenManager::showScreenByType(ScreenType tag)
 {
+    auto rc = false;
     auto it = _screenIndexByName.find(tag);
-    if (it == _screenIndexByName.end())
+
+    do
     {
-        ESP_LOGE(TAG, "No screen found ");
-        return false;
-    }
-    return showScreen(it->second);
+        if (it == _screenIndexByName.end())
+        {
+            ESP_LOGE(TAG, "No screen found ");
+            break;
+        }
+               
+        rc = showScreen(it->second);
+
+    } while (false);
+
+    return rc;
 }
 
 void ScreenManager::removeScreenByType(ScreenType tag)
@@ -158,13 +166,12 @@ void ScreenManager::removeScreenByIndex(size_t index)
         }
     }
 
-   
     if (_screens[index])
     {
         _screens[index]->down();
         _screens[index].reset();
     }
-    
+
     for (auto it = _screenIndexByName.begin(); it != _screenIndexByName.end(); ++it)
     {
         if (it->second == index)
@@ -176,7 +183,6 @@ void ScreenManager::removeScreenByIndex(size_t index)
 
     ESP_LOGI(TAG, "Screen removed by index: %zu", index);
 }
-
 
 void ScreenManager::updateText(std::string_view data)
 {

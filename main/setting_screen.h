@@ -8,17 +8,26 @@
 #pragma once
 
 
-#include "screen_manager.h"
-
+#include "ui/screen_manager.h"
+#include "ui/scrool_input_area.h"
+#include "ui/wifi_selector.h"
+#include "ui/button_panel.h"
+#include "ui/label_panel.h"
 
 class SettingScreen : public IScreen
 {
 private:
     static constexpr const char *TAG = "SScr";
     lv_obj_t *_screen{nullptr};
-    lv_obj_t *_label{nullptr};
     size_t _currentTextIndex{0}; 
     std::vector<std::string> _texts; 
+    std::unique_ptr<ScrollableInputArea> _inputArea;
+    std::unique_ptr<WifiSsidSelector> _wifiSelector;
+    std::unique_ptr<ButtonPanel> _buttonPanel;
+    std::shared_ptr<std::vector<ButtonField>> _buttonFields;
+    std::shared_ptr<LabelPanel> _labelPanel;
+    bool _backgroudTog {true};
+   
 
 public:
     
@@ -33,4 +42,6 @@ public:
     void show() override;
 
     void updateText(std::string_view data);
+
+    void changeBackgroud();
 };

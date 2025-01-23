@@ -7,8 +7,9 @@
 
 #include "main_screen.h"
 #include "esp_log.h"
-#include "screen_manager.h"
+#include "ui/screen_manager.h"
 #include "setting_screen.h"
+
 
 MainScreen::MainScreen() {}
 
@@ -49,7 +50,13 @@ bool MainScreen::init()
         lv_obj_center(label);
         // Callback
         lv_obj_add_event_cb(btn, [](lv_event_t *e)
-                            { ScreenManager::getInstance()->showScreenByType(ScreenType::Setting); }, LV_EVENT_CLICKED, this);
+                            {         
+                                if (!ScreenManager::getInstance()->showScreenByType(ScreenType::Setting))
+                                {
+                                    ScreenManager::getInstance()->addScreen(std::make_unique<SettingScreen>());
+                                    ScreenManager::getInstance()->showScreenByType(ScreenType::Setting);
+                                } 
+                            }, LV_EVENT_CLICKED, this);
 
         btn = lv_btn_create(_screen);
         if (!btn)
@@ -96,11 +103,11 @@ bool MainScreen::init()
 
         lv_obj_align(_led, LV_ALIGN_BOTTOM_MID, 0, -50);
         updateLEDState(_ledStat);
-
         rc = true;
     } while (false);
     return rc;
 }
+
 
 void MainScreen::down()
 {
@@ -118,6 +125,7 @@ void MainScreen::show()
 {
     if (_screen)
     {
+        DDLockGuard lock;
         lv_scr_load(_screen);
     }
 }
@@ -165,8 +173,8 @@ void MainScreen::sdCardTest()
 void MainScreen::message(std::string_view msg)
 {   
     if (!msg.empty()) {
+        DDLockGuard lock;
         lv_obj_t * mbox1 = lv_msgbox_create(NULL, "SD content", msg.data(), nullptr , true);
-        // lv_obj_add_event_cb(mbox1, event_cb, LV_EVENT_VALUE_CHANGED, NULL);
         lv_obj_center(mbox1);
     }
 }

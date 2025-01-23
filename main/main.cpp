@@ -6,7 +6,6 @@
 /// @author Petr Vanek
 
 #include <stdio.h>
-#include "screen_manager.h"
 
 #include "main_screen.h"
 #include "setting_screen.h"
@@ -27,13 +26,28 @@ void monitor()
     printf("Free External Heap: %d bytes\n", free_external);
 }
 
+bool sysInit()
+{
+     auto ret = nvs_flash_init();
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND)
+    {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        ret = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(ret);
+
+    esp_netif_init();
+    ESP_ERROR_CHECK(esp_event_loop_create_default());
+    return ret;
+}
+
 void app_main(void)
 {
+    sysInit();
 
     auto *screenManager = ScreenManager::getInstance();
     screenManager->initLCD(true, HW_I2C_NUM);
     screenManager->addScreen(std::make_unique<MainScreen>());
-    screenManager->addScreen(std::make_unique<SettingScreen>());
     screenManager->showScreenByType(ScreenType::Main);
     screenManager->updateText("Text from main");
  

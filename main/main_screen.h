@@ -8,7 +8,7 @@
 #pragma once
 
 #include "lvgl.h"
-#include "screen_if.h"
+#include "ui/screen_if.h"
 #include "sd_card.h"
 
 class ScreenManager;
@@ -38,7 +38,6 @@ public:
 
     void message(std::string_view msg);
 
-    //void closeDialog();
 
 private:
 };

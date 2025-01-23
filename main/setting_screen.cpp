@@ -7,7 +7,7 @@
 
 #include "setting_screen.h"
 #include "esp_log.h"
-#include "screen_manager.h"
+#include "ui/screen_manager.h"
 
 SettingScreen::SettingScreen()
 {
@@ -25,6 +25,8 @@ bool SettingScreen::init()
     bool rc = false;
     do
     {
+        const lv_coord_t shift = 300;
+
         if (_screen && lv_obj_is_valid(_screen))
         {
             ESP_LOGE(TAG, "Screen already initialized");
@@ -35,77 +37,74 @@ bool SettingScreen::init()
         if (!_screen)
             break;
 
-        lv_obj_set_style_bg_color(_screen, lv_color_hex(0x99FFAA), 0);
+        lv_obj_set_style_bg_color(_screen, lv_color_hex(UIStyle::BackgroundScreen), 0);
         lv_obj_set_style_bg_opa(_screen, LV_OPA_COVER, 0);
 
-        // switch to other screen
-        lv_obj_t *btn = lv_btn_create(_screen);
-        if (!btn)
-            break;
-        lv_obj_align(btn, LV_ALIGN_CENTER, 0, 0);
-        lv_obj_set_size(btn, 180, 50);
-        lv_obj_t *label = lv_label_create(btn);
-        if (!label)
-            break;
-        lv_label_set_text(label, "Go to Home");
-        lv_obj_center(label);
-        // Callback
-        lv_obj_add_event_cb(btn,  [](lv_event_t *e) {  
-             ScreenManager::getInstance()->showScreenByType(ScreenType::Main);
-        }, LV_EVENT_CLICKED, this);
+        _wifiSelector = std::make_unique<WifiSsidSelector>(_screen, 350, 200, 430, 10);
+        _wifiSelector->withOnWifiSelectedCallback([this](const std::string &ssid)
+                                                  { ESP_LOGI("MAIN", "********* Selected Wi-Fi: %s", ssid.c_str()); 
+                                                  DDLockGuard lock;
+                                                 _inputArea->setInputContent("wifiField",ssid); });
+        _wifiSelector->startPeriodicScan();
 
-        // change text
-        btn = lv_btn_create(_screen);
-        if (!btn)
-            break;
-        lv_obj_align(btn, LV_ALIGN_CENTER, 0, 100);
-        lv_obj_set_size(btn, 180, 50);
-        label = lv_label_create(btn);
-        if (!label)
-            break;
-        lv_label_set_text(label, "Change text");
-        lv_obj_center(label);
-        // Callback
-        lv_obj_add_event_cb(btn,  [](lv_event_t *e) {  auto *self = static_cast<SettingScreen *>(lv_event_get_user_data(e));
-        if (self) {
-            self->_currentTextIndex = (self->_currentTextIndex + 1) % self->_texts.size();
-            const char *nextText = self->_texts[self->_currentTextIndex].c_str();
-            self->updateText(nextText);
-      
-        }}, LV_EVENT_CLICKED, this);
+        _buttonFields = std::make_shared<std::vector<ButtonField>>(
+            std::initializer_list<ButtonField>{
+                {"Go to home screen", lv_color_hex(0xFFFFFF), lv_color_hex(0x1E90FF), [this]()
+                 {
+                     ScreenManager::getInstance()->showScreenByType(ScreenType::Main);
+                 }},
+                {"Change text", lv_color_hex(0x000000), lv_color_hex(0xFF6347), [this]()
+                 {
+                     _currentTextIndex = (_currentTextIndex + 1) % _texts.size();
+                     const char *nextText = _texts[_currentTextIndex].c_str();
+                     updateText(nextText);
+                 }},
+                {"Background change", lv_color_hex(0xFFFFFF), lv_color_hex(0x32CD32), [this]()
+                 {
+                     changeBackgroud();
+                 }}});
 
+        _buttonPanel = std::make_unique<ButtonPanel>(_screen, _buttonFields, 350, 230, 430, 230);
 
-        _label = lv_label_create(_screen);
-        if (!label)
-            break;
+        _labelPanel = std::make_unique<LabelPanel>(_screen, "Push button ->", 400, 60, 10, 400, 4);
 
-        lv_label_set_text(_label, "Hello, World!");
-        lv_obj_align(_label, LV_ALIGN_BOTTOM_MID, 0, -50);
+        std::vector<InputField> fields = {
+            {"field1", "Name:", "", 20, lv_color_hex(0xFF7777), false},
+            {"wifiField", "SSID:", "", 20, lv_color_hex(UIStyle::White), false},
+            {"field3", "PASSWORD:", "", 20, lv_color_hex(UIStyle::White), true},
+            {"field4", "MQTT:", "mqtt://xx.xx.xx.xx", 40, lv_color_hex(UIStyle::White), false},
+            {"field5", "TMZ:", "", 20, lv_color_hex(UIStyle::White), false},
+            {"field6", "Email:", "test@test.com", 30, lv_color_hex(UIStyle::White), false}};
+
+        _inputArea = std::make_unique<ScrollableInputArea>(_screen, fields, 200, 400, 380, 10, 10);
 
         rc = true;
     } while (false);
     return rc;
 }
 
- void SettingScreen::down()
+void SettingScreen::down()
 {
     if (_screen && lv_obj_is_valid(_screen))
     {
         lv_obj_del(_screen);
-        _screen = nullptr; 
+        _screen = nullptr;
     }
 
-    _label = nullptr;
+    _wifiSelector.reset();
+    _inputArea.reset();
+    _buttonPanel.reset();
+    _buttonFields.reset();
+    _labelPanel.reset();
 
     ESP_LOGI(TAG, "SettingScreen resources released.");
 }
-
-
 
 void SettingScreen::show()
 {
     if (_screen)
     {
+        DDLockGuard lock;
         lv_scr_load(_screen);
     }
 }
@@ -113,10 +112,10 @@ void SettingScreen::show()
 void SettingScreen::updateText(std::string_view data)
 {
 
-    if (_label && !data.empty())
+    if (_labelPanel && !data.empty())
     {
         DDLockGuard lock;
-        lv_label_set_text(_label, data.data());
+        _labelPanel->setText(data.data());
     }
     else
     {
@@ -124,3 +123,17 @@ void SettingScreen::updateText(std::string_view data)
     }
 }
 
+void SettingScreen::changeBackgroud()
+{
+    DDLockGuard lock;
+    if (_labelPanel)
+        _labelPanel->setBackgroundColor(_backgroudTog ? lv_color_hex(UIStyle::White) : lv_color_hex(UIStyle::BackgroundContent));
+    if (_buttonPanel)
+        _buttonPanel->setBackgroundColor(_backgroudTog ? lv_color_hex(UIStyle::White) : lv_color_hex(UIStyle::BackgroundContent));
+    if (_wifiSelector)
+        _wifiSelector->setBackgroundColor(_backgroudTog ? lv_color_hex(UIStyle::White) : lv_color_hex(UIStyle::BackgroundContent));
+    if (_inputArea)
+        _inputArea->setBackgroundColor(_backgroudTog ? lv_color_hex(UIStyle::White) : lv_color_hex(UIStyle::BackgroundContent));
+
+    _backgroudTog = !_backgroudTog;
+}

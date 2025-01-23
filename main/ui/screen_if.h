@@ -58,7 +58,8 @@ public:
     /**
      * @brief Displays the screen.
      * 
-     * This method should load the screen's content onto the display.
+     *  This method should load the screen's content onto the display.
+     * 
      */
     virtual void show() = 0;
 
